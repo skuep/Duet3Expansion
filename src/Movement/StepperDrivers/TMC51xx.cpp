@@ -880,11 +880,7 @@ void TmcDriverState::UpdateCurrent() noexcept
 	constexpr uint32_t MaxStandstillCurrentTimes256 = 256 * (uint32_t)MaximumStandstillCurrent;
 	const uint16_t desiredStandstillCurrentFraction =
 #if SUPPORT_CLOSED_LOOP
-# if SINGLE_DRIVER
 					(GetMoveInstance().IsClosedLoopEnabled(axisNumber)) ? 256 : standstillCurrentFraction;
-# else
-#  error Multiple closed loop drivers not supported here
-# endif
 #else
 					standstillCurrentFraction;
 #endif

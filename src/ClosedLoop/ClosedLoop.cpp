@@ -122,20 +122,25 @@ void ClosedLoop::SetMotorPhase(uint16_t phase, float magnitude) noexcept
 # if SUPPORT_TMC51xx && SINGLE_DRIVER
 	SmartDrivers::SetMotorCurrents(0, (((uint32_t)(uint16_t)coilB << 16) | (uint32_t)(uint16_t)coilA) & 0x01FF01FF);
 # else
-#  error Multi driver code not implemented
+	SmartDrivers::SetMotorCurrents(0, (((uint32_t)(uint16_t)coilB << 16) | (uint32_t)(uint16_t)coilA) & 0x01FF01FF);
 # endif
 }
 
+#if 0
 static_assert(ClockGenGclkNumber == GclkClosedLoop);							// check that this GCLK number has been reserved
+#endif
 
 static void GenerateTmcClock()
 {
+#if 0
 	// Currently we program DPLL0 to generate 120MHz output, so to get 15MHz with 1:1 ratio we divide by 8.
 	// We could divide by 7 instead giving 17.143MHz with 25ns and 33.3ns times. TMC2160A max is 18MHz, minimum 16ns and 16ns low.
 	// Max SPI clock frequency is half this clock frequency.
 	ConfigureGclk(ClockGenGclkNumber, GclkSource::dpll0, 8, true);
 	SetPinFunction(ClockGenPin, ClockGenPinPeriphMode);
 	SmartDrivers::SetTmcExternalClock(15000000);
+#else
+#endif
 }
 
 // Module initialisation
@@ -146,8 +151,9 @@ static void GenerateTmcClock()
 
 void ClosedLoop::InitInstance() noexcept
 {
+#if 0
 	pinMode(EncoderCsPin, OUTPUT_HIGH);											// make sure that any attached SPI encoder is not selected
-
+#endif
 	// Initialise to default error thresholds
 	errorThresholds[0] = DefaultClosedLoopPositionWarningThreshold;
 	errorThresholds[1] = DefaultClosedLoopPositionErrorThreshold;
@@ -285,6 +291,7 @@ GCodeResult ClosedLoop::ProcessM569Point1(CanMessageGenericParser& parser, const
 			// encoder is already nullptr
 			break;
 
+#if 0
 		case EncoderType::rotaryAS5047:
 			encoder = new AS5047D(tempStepsPerRev, *Platform::sharedSpi, EncoderCsPin);
 			CreateCalibrationTask();
@@ -299,6 +306,7 @@ GCodeResult ClosedLoop::ProcessM569Point1(CanMessageGenericParser& parser, const
 			CreateCalibrationTask();
 			encoder = new LinearCompositeEncoder(tempCPR, tempStepsPerRev, *Platform::sharedSpi, EncoderCsPin);
 			break;
+#endif
 
 		case EncoderType::rotaryQuadrature:
 			encoder = new QuadratureEncoderPdec(tempCPR, tempStepsPerRev);
@@ -508,7 +516,7 @@ void ClosedLoop::UpdateStandstillCurrent() noexcept
 #if SINGLE_DRIVER
 	holdCurrentFraction = SmartDrivers::GetStandstillCurrentPercent(0) * 0.01;
 #else
-# error Multi driver code not implemented
+	holdCurrentFraction = SmartDrivers::GetStandstillCurrentPercent(0) * 0.01;
 #endif
 }
 
@@ -1092,7 +1100,18 @@ void ClosedLoop::ResetError() noexcept
 		inTorqueMode = false;
 	}
 # else
-#  error Multi driver code not implemented
+	if (encoder != nullptr)
+	{
+		TaskCriticalSectionLocker lock;
+
+		// Set the target position to the current position
+		const bool err = encoder->TakeReading();
+		(void)err;		//TODO handle error
+		errorDerivativeFilter.Reset();
+		speedFilter.Reset();
+		SetTargetToCurrentPosition();
+		inTorqueMode = false;
+	}
 # endif
 }
 

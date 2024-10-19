@@ -23,7 +23,7 @@ Move *moveInstance;
 # if SINGLE_DRIVER
 ClosedLoop *closedLoopInstance;
 # else
-#  error Multiple closed loop drivers not supported
+ClosedLoop *closedLoopInstance;
 # endif
 #endif
 

@@ -30,6 +30,7 @@
 #define DEDICATED_STEP_TIMER	1
 #define SUPPORT_INPUT_SHAPING	1
 #define SUPPORT_BRAKE_PWM		1
+#define SUPPORT_CLOSED_LOOP		1
 
 #define ACTIVE_HIGH_STEP		1		// 1 = active high, 0 = active low
 #define ACTIVE_HIGH_DIR			1		// 1 = active high, 0 = active low
@@ -78,6 +79,10 @@ constexpr Pin TMC51xxSclkPin = PortBPin(25);
 constexpr GpioPinFunction TMC51xxSclkPinPeriphMode = GpioPinFunction::C;
 constexpr Pin TMC51xxMisoPin = PortCPin(25);
 constexpr GpioPinFunction TMC51xxMisoPinPeriphMode = GpioPinFunction::C;
+
+// Position decoder
+constexpr Pin PositionDecoderPins[] = { PortCPin(16), PortCPin(17), PortCPin(18) };
+constexpr GpioPinFunction PositionDecoderPinFunction = GpioPinFunction::G;
 
 PortGroup * const StepPio = &(PORT->Group[0]);		// the PIO that all the step pins are on
 constexpr Pin StepPins[NumDrivers] = { PortAPin(25), PortAPin(27), PortAPin(1) };
