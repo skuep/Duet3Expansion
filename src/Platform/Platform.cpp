@@ -105,8 +105,10 @@ namespace Platform
 	static uint8_t boardVariant = 0;
 #endif
 
+#if 0
 #if SUPPORT_SPI_SENSORS || SUPPORT_CLOSED_LOOP || defined(ATEIO)
 	SharedSpiDevice *sharedSpi = nullptr;
+#endif
 #endif
 
 #if SUPPORT_I2C_SENSORS
@@ -665,11 +667,13 @@ void Platform::Init()
 	}
 #endif
 
+#if 0
 #if SUPPORT_SPI_SENSORS || SUPPORT_CLOSED_LOOP || defined(ATEIO)
 	// Set the pin functions
 	SetPinFunction(SSPIMosiPin, SSPIMosiPinPeriphMode);
 	SetPinFunction(SSPISclkPin, SSPISclkPinPeriphMode);
 	SetPinFunction(SSPIMisoPin, SSPIMisoPinPeriphMode);
+
 # if SAME5x || SAMC21
 	sharedSpi = new SharedSpiDevice(SspiSercomNumber, SspiDataInPad);
 # elif RP2040
@@ -677,6 +681,7 @@ void Platform::Init()
 # else
 # error Unsupported processor
 # endif
+#endif
 #endif
 
 #if SUPPORT_I2C_SENSORS

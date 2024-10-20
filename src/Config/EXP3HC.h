@@ -40,7 +40,7 @@
 #define SUPPORT_TMC2660			0
 
 #define SUPPORT_THERMISTORS		1
-#define SUPPORT_SPI_SENSORS		1
+#define SUPPORT_SPI_SENSORS		0
 #define SUPPORT_I2C_SENSORS		0
 #define SUPPORT_DHT_SENSOR		0
 #define SUPPORT_DMA_NEOPIXEL	0
@@ -113,6 +113,7 @@ constexpr Pin BoardAddressPins[4] = { PortCPin(11), PortCPin(12), PortCPin(14), 
 constexpr Pin TempSensePins[NumThermistorInputs] = { PortCPin(3), PortBPin(8), PortBPin(7) };
 
 // Shared SPI
+#if 0
 constexpr uint8_t SspiSercomNumber = 6;
 constexpr uint32_t SspiDataInPad = 3;
 constexpr Pin SSPIMosiPin = PortCPin(16);
@@ -121,7 +122,7 @@ constexpr Pin SSPISclkPin = PortCPin(17);
 constexpr GpioPinFunction SSPISclkPinPeriphMode = GpioPinFunction::C;
 constexpr Pin SSPIMisoPin = PortCPin(19);
 constexpr GpioPinFunction SSPIMisoPinPeriphMode = GpioPinFunction::C;
-
+#endif
 constexpr auto sercom1cPad0 = SercomIo::sercom1c + SercomIo::pad0;
 constexpr auto sercom1cPad1 = SercomIo::sercom1c + SercomIo::pad1;
 constexpr auto sercom3cPad0 = SercomIo::sercom3c + SercomIo::pad0;
