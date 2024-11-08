@@ -51,6 +51,8 @@ public:
 	DriveMovement() noexcept { }
 	void Init(size_t drv) noexcept;
 
+	size_t GetDriveIdx() const noexcept { return drive; }
+
 	bool CalcNextStepTime(uint32_t now) noexcept SPEED_CRITICAL;
 
 	void DebugPrint() const noexcept;

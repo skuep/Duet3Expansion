@@ -63,7 +63,7 @@ public:
 #endif
 
 	// Closed loop public methods
-	void InitInstance() noexcept;
+	void InitInstance(DriveMovement* dm) noexcept;
 
 	GCodeResult ProcessM569Point1(CanMessageGenericParser& parser, const StringRef& reply) noexcept;
 	GCodeResult ProcessM569Point4(CanMessageGenericParser& parser, const StringRef& reply) noexcept;
@@ -72,7 +72,7 @@ public:
 	void UpdateStandstillCurrent() noexcept;
 
 	const char *_ecv_array GetModeText() const noexcept;
-	void InstanceDiagnostics(size_t driver, const StringRef& reply) noexcept;
+	void InstanceDiagnostics(const StringRef& reply) noexcept;
 
 	// Methods called by the motion system
 	void InstanceControlLoop(StepTimer::Ticks now, StepTimer::Ticks timeElapsed) noexcept;
@@ -131,6 +131,7 @@ private:
 		SendingData			// finished collecting data but still sending it to the main board
 	};
 
+	DriveMovement* dm;
 	Encoder *encoder = nullptr;									// Pointer to the encoder object in use
 	volatile uint8_t tuning = 0;								// Bitmask of any tuning manoeuvres that have been requested
 	TuningErrors tuningError;									// Flags for any tuning errors

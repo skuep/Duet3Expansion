@@ -679,7 +679,13 @@ void Move::StepDrivers(uint32_t now) noexcept
 	DriveMovement* dm = activeDMs;
 	while (dm != nullptr && (int32_t)(dm->nextStepTime - now) <= (int32_t)MoveTiming::MinInterruptInterval)		// if the next step is due
 	{
-		driversStepping |= dm->driversCurrentlyUsed;
+# if SUPPORT_CLOSED_LOOP
+		if (!dm->closedLoopControl.IsClosedLoopEnabled())
+# endif
+		{
+			driversStepping |= dm->driversCurrentlyUsed;
+		}
+
 		dm = dm->nextDM;
 	}
 
@@ -2304,7 +2310,7 @@ void Move::PhaseStepControlLoop() noexcept
 
 void Move::ClosedLoopDiagnostics(size_t driver, const StringRef& reply) noexcept
 {
-	dms[driver].closedLoopControl.InstanceDiagnostics(driver, reply);
+	dms[driver].closedLoopControl.InstanceDiagnostics(reply);
 }
 
 bool Move::EnableIfIdle(size_t driver) noexcept

@@ -33,7 +33,7 @@ void DriveMovement::Init(size_t drv) noexcept
 	segments = nullptr;
 	segmentFlags.Init();
 #if SUPPORT_CLOSED_LOOP
-	closedLoopControl.InitInstance();
+	closedLoopControl.InitInstance(this);
 #endif
 }
 
