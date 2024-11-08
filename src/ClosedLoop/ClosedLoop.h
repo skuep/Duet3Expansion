@@ -229,7 +229,6 @@ private:
 	GCodeResult ProcessCalibrationResult(const StringRef& reply) noexcept;
 	void ReportTuningErrors(TuningErrors tuningErrorBitmask, const StringRef& reply) noexcept;
 	void SetTargetToCurrentPosition() noexcept;
-	void CreateCalibrationTask() noexcept;
 
 	// Tuning methods
 	bool BasicTuning(bool firstIteration) noexcept;

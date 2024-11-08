@@ -165,10 +165,6 @@ void ClosedLoop::InitInstance(DriveMovement* dm) noexcept
 	this->dm = dm;
 
 	UpdateStandstillCurrent();
-
-	// Set up the data transmission task
-	dataTransmissionTask = new Task<DataCollectionTaskStackWords>;
-	dataTransmissionTask->Create(DataTransmissionTaskEntry, "CLSend", this, TaskPriority::ClosedLoopDataTransmission);
 }
 
 GCodeResult ClosedLoop::ProcessM569Point1(CanMessageGenericParser& parser, const StringRef& reply) noexcept
@@ -431,6 +427,9 @@ GCodeResult ClosedLoop::ProcessM569Point5(const CanMessageStartClosedLoopDataCol
 		dataCollectionStartTicks = whenNextSampleDue = StepTimer::GetMovementTimerTicks();
 		samplingMode = (RecordingMode)requestedMode;				// do this one last, it triggers data collection
 
+		dataTransmissionTask = new Task<DataCollectionTaskStackWords>;
+		dataTransmissionTask->Create(DataTransmissionTaskEntry, "CLSend", this, TaskPriority::ClosedLoopDataTransmission);
+
 		StartTuning(msg.movement);
 	}
 	return GCodeResult::ok;
@@ -587,16 +586,10 @@ void ClosedLoop::EncoderCalibrationTaskLoop() noexcept
 		{
 			calibrationErrors = encoder->Calibrate(calibrateNotCheck);
 			calibrationState = CalibrationState::complete;
-		}
-	}
-}
 
-void ClosedLoop::CreateCalibrationTask() noexcept
-{
-	if (encoderCalibrationTask == nullptr)
-	{
-		encoderCalibrationTask = new Task<EncoderCalibrationTaskStackWords>;
-		encoderCalibrationTask->Create(EncoderCalibrationTaskEntry, "EncCal", this, TaskPriority::SpinPriority);		// must be same priority as main task
+			encoderCalibrationTask->TerminateAndUnlink();
+			encoderCalibrationTask = nullptr;
+		}
 	}
 }
 
@@ -702,12 +695,13 @@ void ClosedLoop::FinishedBasicTuning() noexcept
 void ClosedLoop::ReadyToCalibrate(bool store) noexcept
 {
 	calibrateNotCheck = store;
-	if (encoderCalibrationTask != nullptr)
-	{
-		calibrationState = CalibrationState::dataReady;
-		tuningError |= TuningError::TuningOrCalibrationInProgress;			// to prevent movement in case we are re-calibrating
-		encoderCalibrationTask->Give(NotifyIndices::ClosedLoopDataTransmission);
-	}
+
+	encoderCalibrationTask = new Task<EncoderCalibrationTaskStackWords>;
+	encoderCalibrationTask->Create(EncoderCalibrationTaskEntry, "EncCal", this, TaskPriority::SpinPriority);		// must be same priority as main task
+
+	calibrationState = CalibrationState::dataReady;
+	tuningError |= TuningError::TuningOrCalibrationInProgress;			// to prevent movement in case we are re-calibrating
+	encoderCalibrationTask->Give(NotifyIndices::ClosedLoopDataTransmission);
 }
 
 // This is called by tuning to execute a step
@@ -876,6 +870,8 @@ void ClosedLoop::InstanceControlLoop(StepTimer::Ticks now, StepTimer::Ticks time
 				CanInterface::Send(&buf);
 			} while (!finished);
 			samplingMode = RecordingMode::None;
+			dataTransmissionTask->TerminateAndUnlink();
+			dataTransmissionTask = nullptr;
 		}
 		else
 		{
