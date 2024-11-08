@@ -19,15 +19,6 @@ extern const char VersionText[] = "Duet " BOARD_TYPE_NAME " firmware version " V
 Move *moveInstance;
 #endif
 
-#if SUPPORT_CLOSED_LOOP
-# if SINGLE_DRIVER
-ClosedLoop *closedLoopInstance;
-# else
-#  warning Multiple closed loop drivers not supported
-ClosedLoop *closedLoopInstance;
-# endif
-#endif
-
 void debugPrintf(const char* fmt, ...) noexcept
 {
 	va_list vargs;
