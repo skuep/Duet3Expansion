@@ -39,6 +39,7 @@ using std::numeric_limits;
 # include "Encoders/AS5047D.h"
 # include "Encoders/TLI5012B.h"
 # include "Encoders/QuadratureEncoderPdec.h"
+# include "Encoders/QuadratureEncoderCCL.h"
 # include "Encoders/LinearCompositeEncoder.h"
 
 # include <ClosedLoop/DerivativeAveragingFilter.h>
@@ -310,8 +311,14 @@ GCodeResult ClosedLoop::ProcessM569Point1(CanMessageGenericParser& parser, const
 		case EncoderType::rotaryQuadrature:
 			if (dm->GetDriveIdx() == 0) {
 				encoder = new QuadratureEncoderPdec(tempCPR, tempStepsPerRev);
+#if SUPPORT_CCL_ENCODER
+			} else if (dm->GetDriveIdx() == 1) {
+				encoder = new QuadratureEncoderCCL(tempCPR, tempStepsPerRev);
+#endif
 			} else {
 				/* No encoder for other drivers */
+				reply.copy("No encoder available for this driver");
+				return GCodeResult::error;
 			}
 			break;
 		}
@@ -530,7 +537,7 @@ GCodeResult ClosedLoop::ProcessBasicTuningResult(const StringRef& reply) noexcep
 	// 2. No new tuning errors exist !(~prevTuningError & tuningError)	= WARNING
 	// 3. A new tuning error has been introduced (else)					= WARNING
 	basicTuningDataReady = false;
-	reply.printf("Driver %u.0 basic tuning ", CanInterface::GetCanAddress());
+	reply.printf("Driver %u.%u basic tuning ", CanInterface::GetCanAddress(), dm->GetDriveIdx());
 
 	const TuningErrors newTuningErrors = encoder->ProcessTuningData();
 	if (newTuningErrors != 0)
@@ -601,7 +608,7 @@ GCodeResult ClosedLoop::ProcessCalibrationResult(const StringRef& reply) noexcep
 		return GCodeResult::notFinished;
 	}
 
-	reply.printf("Driver %u.0 calibration ", CanInterface::GetCanAddress());
+	reply.printf("Driver %u.%u calibration ", CanInterface::GetCanAddress(), dm->GetDriveIdx());
 	if (calibrationState != CalibrationState::complete)
 	{
 		reply.cat("failed (no reason available)");
@@ -708,7 +715,7 @@ void ClosedLoop::ReadyToCalibrate(bool store) noexcept
 void ClosedLoop::AdjustTargetMotorSteps(float amount) noexcept
 {
 	mParams.position += amount;
-	moveInstance->SetCurrentMotorSteps(0, lrintf(mParams.position));
+	moveInstance->SetCurrentMotorSteps(dm->GetDriveIdx(), lrintf(mParams.position));
 }
 
 void ClosedLoop::InstanceControlLoop(StepTimer::Ticks now, StepTimer::Ticks timeElapsed) noexcept
@@ -717,7 +724,7 @@ void ClosedLoop::InstanceControlLoop(StepTimer::Ticks now, StepTimer::Ticks time
 	if (encoder != nullptr && !encoder->TakeReading())
 	{
 		// Calculate and store the current error in full steps
-		hasMovementCommand = moveInstance->GetCurrentMotion(0, now, mParams);
+		hasMovementCommand = moveInstance->GetCurrentMotion(dm->GetDriveIdx(), now, mParams);
 		if (hasMovementCommand)
 		{
 			if (inTorqueMode)

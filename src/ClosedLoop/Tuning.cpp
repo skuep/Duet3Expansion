@@ -4,6 +4,7 @@
 #if SUPPORT_CLOSED_LOOP
 
 #include "Encoders/Encoder.h"
+#include "Movement/DriveMovement.h"
 
 # if SUPPORT_TMC51xx
 #  include "Movement/StepperDrivers/TMC51xx.h"
@@ -515,7 +516,7 @@ void ClosedLoop::PerformTune() noexcept
 	static bool newTuningMove = true;						// indicates if a tuning move has just finished
 
 	// Check we are in direct drive mode and we have an encoder
-	if (SmartDrivers::GetDriverMode(0) != DriverMode::direct || encoder == nullptr)
+	if (SmartDrivers::GetDriverMode(dm->GetDriveIdx()) != DriverMode::direct || encoder == nullptr)
 	{
 		tuningError |= TuningError::SystemError;
 		tuning = 0;
