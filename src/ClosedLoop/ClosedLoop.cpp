@@ -65,14 +65,7 @@ using std::numeric_limits;
 
 #define BASIC_TUNING_DEBUG	0
 
-constexpr size_t DataCollectionTaskStackWords = 200;		// Size of the stack for the data collection task
-constexpr size_t EncoderCalibrationTaskStackWords = 500;	// Size of the stack for the encoder calibration task
-
 SampleBuffer ClosedLoop::sampleBuffer;												// buffer for collecting samples - shared between all drives if we have more than one
-
-// Tasks and task loops
-static Task<DataCollectionTaskStackWords> *dataTransmissionTask = nullptr;			// Data transmission task - handles sending back the buffered sample data
-static Task<EncoderCalibrationTaskStackWords> *encoderCalibrationTask = nullptr;	// Encoder calibration task - handles calibrating the encoder in the background
 
 extern "C" [[noreturn]] void DataTransmissionTaskEntry(void *param) noexcept
 {
@@ -166,6 +159,13 @@ void ClosedLoop::InitInstance(DriveMovement* dm) noexcept
 	this->dm = dm;
 
 	UpdateStandstillCurrent();
+
+	// Set up the data transmission task
+	dataTransmissionTask = new Task<DataCollectionTaskStackWords>;
+	dataTransmissionTask->Create(DataTransmissionTaskEntry, "CLSend", this, TaskPriority::ClosedLoopDataTransmission);
+
+	encoderCalibrationTask = new Task<EncoderCalibrationTaskStackWords>;
+	encoderCalibrationTask->Create(EncoderCalibrationTaskEntry, "EncCal", this, TaskPriority::SpinPriority);		// must be same priority as main task
 }
 
 GCodeResult ClosedLoop::ProcessM569Point1(CanMessageGenericParser& parser, const StringRef& reply) noexcept
@@ -434,9 +434,6 @@ GCodeResult ClosedLoop::ProcessM569Point5(const CanMessageStartClosedLoopDataCol
 		dataCollectionStartTicks = whenNextSampleDue = StepTimer::GetMovementTimerTicks();
 		samplingMode = (RecordingMode)requestedMode;				// do this one last, it triggers data collection
 
-		dataTransmissionTask = new Task<DataCollectionTaskStackWords>;
-		dataTransmissionTask->Create(DataTransmissionTaskEntry, "CLSend", this, TaskPriority::ClosedLoopDataTransmission);
-
 		StartTuning(msg.movement);
 	}
 	return GCodeResult::ok;
@@ -593,9 +590,6 @@ void ClosedLoop::EncoderCalibrationTaskLoop() noexcept
 		{
 			calibrationErrors = encoder->Calibrate(calibrateNotCheck);
 			calibrationState = CalibrationState::complete;
-
-			encoderCalibrationTask->TerminateAndUnlink();
-			encoderCalibrationTask = nullptr;
 		}
 	}
 }
@@ -702,9 +696,6 @@ void ClosedLoop::FinishedBasicTuning() noexcept
 void ClosedLoop::ReadyToCalibrate(bool store) noexcept
 {
 	calibrateNotCheck = store;
-
-	encoderCalibrationTask = new Task<EncoderCalibrationTaskStackWords>;
-	encoderCalibrationTask->Create(EncoderCalibrationTaskEntry, "EncCal", this, TaskPriority::SpinPriority);		// must be same priority as main task
 
 	calibrationState = CalibrationState::dataReady;
 	tuningError |= TuningError::TuningOrCalibrationInProgress;			// to prevent movement in case we are re-calibrating
@@ -877,8 +868,6 @@ void ClosedLoop::InstanceControlLoop(StepTimer::Ticks now, StepTimer::Ticks time
 				CanInterface::Send(&buf);
 			} while (!finished);
 			samplingMode = RecordingMode::None;
-			dataTransmissionTask->TerminateAndUnlink();
-			dataTransmissionTask = nullptr;
 		}
 		else
 		{

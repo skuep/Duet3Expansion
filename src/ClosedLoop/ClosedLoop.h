@@ -27,6 +27,9 @@ constexpr float MaxGoodBacklash = 0.15;					// the maximum backlash in full step
 constexpr unsigned int LinearEncoderIncreaseFactor = 4;	// this should be a power of 2. Allowed backlash is increased by this amount for linear composite encoders.
 constexpr float VelocityLimitGainFactor = 5.0;			// the gain of the P loop when in torque mode
 
+constexpr size_t DataCollectionTaskStackWords = 200;		// Size of the stack for the data collection task
+constexpr size_t EncoderCalibrationTaskStackWords = 500;	// Size of the stack for the encoder calibration task
+
 class Encoder;
 class SpiEncoder;
 class CanMessageGenericParser;
@@ -138,6 +141,10 @@ private:
 
 	// Control variables, set by the user to determine how the closed loop controller works
 	ClosedLoopMode currentMode = ClosedLoopMode::open;			// which mode the driver is in
+
+	// Tasks for data transmission and encoder calibration
+	Task<DataCollectionTaskStackWords> *dataTransmissionTask;			// Data transmission task - handles sending back the buffered sample data
+	Task<EncoderCalibrationTaskStackWords> *encoderCalibrationTask;		// Encoder calibration task - handles calibrating the encoder in the background
 
 	// Holding current, and variables derived from it
 	float 	holdCurrentFraction = DefaultHoldCurrentFraction;	// The minimum holding current when stationary
