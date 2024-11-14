@@ -91,7 +91,11 @@ constexpr uint32_t DriversSpiClockFrequency = 6000000;		// 6MHz SPI clock (max i
 constexpr uint32_t DriversSpiClockFrequency = 4000000;		// 4MHz SPI clock (max when using the internal TMC clock)
 # endif
 
+# if SUPPORT_CLOSED_LOOP && defined(EXP3HC)
+constexpr uint32_t DriversDirectSleepMicroseconds = 160;	// Increased cycle time for multiple closed loop drivers
+# else
 constexpr uint32_t DriversDirectSleepMicroseconds = 80;		// how long the closed loop task sleeps for in each cycle
+# endif
 #else
 // With a 2MHz SPI clock, on the 3HC the TMC task takes about 25% of the CPU time. So we now use 500kHz. This means the SPI transfer will complete in a little over 240us.
 constexpr uint32_t DriversSpiClockFrequency = 500000;		// 500kHz SPI clock
