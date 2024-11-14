@@ -724,14 +724,19 @@ void Move::StepDrivers(uint32_t now) noexcept
 	while (dmToInsert != dm)										// note that both of these may be nullptr
 	{
 		DriveMovement * const nextToInsert = dmToInsert->nextDM;
-		if (dmToInsert->state >= DMState::firstMotionState)
+# if SUPPORT_PHASE_STEPPING || SUPPORT_CLOSED_LOOP
+		if (dmToInsert->state != DMState::phaseStepping)
+# endif
 		{
-			if (dmToInsert->directionChanged)
+			if (dmToInsert->state >= DMState::firstMotionState)
 			{
-				dmToInsert->directionChanged = false;
-				SetDirection(dmToInsert->drive, dmToInsert->direction);
+				if (dmToInsert->directionChanged)
+				{
+					dmToInsert->directionChanged = false;
+					SetDirection(dmToInsert->drive, dmToInsert->direction);
+				}
+				InsertDM(dmToInsert);
 			}
-			InsertDM(dmToInsert);
 		}
 		dmToInsert = nextToInsert;
 	}
@@ -779,15 +784,23 @@ void Move::PrepareForNextSteps(DriveMovement *stopDm, uint32_t now) noexcept
 			if (dm2->NewSegment(now) != nullptr && dm2->state != DMState::starting)
 			{
 # if SUPPORT_PHASE_STEPPING || SUPPORT_CLOSED_LOOP
-				dm2->driversCurrentlyUsed = dm2->driversNormallyUsed;	// we previously set driversCurrentlyUsed to 0 to avoid generating a step, so restore it now
+				if (dm2->state != DMState::phaseStepping)
 # endif
-				(void)dm2->CalcNextStepTimeFull(now);					// calculate next step time
-				dm2->directionChanged = true;							// force the direction to be set up
+				{
+					dm2->driversCurrentlyUsed = dm2->driversNormallyUsed;	// we previously set driversCurrentlyUsed to 0 to avoid generating a step, so restore it now
+					(void)dm2->CalcNextStepTimeFull(now);					// calculate next step time
+					dm2->directionChanged = true;							// force the direction to be set up
+				}
 			}
 		}
 		else
 		{
-			(void)dm2->CalcNextStepTime(now);							// calculate next step time, which may change the required direction
+# if SUPPORT_PHASE_STEPPING || SUPPORT_CLOSED_LOOP
+			if (dm2->state != DMState::phaseStepping)
+# endif
+			{
+				(void)dm2->CalcNextStepTime(now);							// calculate next step time, which may change the required direction
+			}
 		}
 	}
 }
