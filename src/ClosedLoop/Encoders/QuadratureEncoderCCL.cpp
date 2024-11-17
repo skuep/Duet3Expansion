@@ -139,7 +139,7 @@ void QuadratureEncoderCCL::AppendDiagnostics(const StringRef &reply) noexcept
 
 #if 1	//debug
 	TCC3->CTRLBSET.reg = TCC_CTRLBSET_CMD_READSYNC;
-	while (TCC3->SYNCBUSY.reg & TCC_SYNCBUSY_COUNT) { }
+	while (TCC3->SYNCBUSY.reg & (TCC_SYNCBUSY_CTRLB | TCC_SYNCBUSY_COUNT)) { }
 	const uint16_t count = TCC3->COUNT.reg;
 	reply.catf(", raw count %u", count);
 #endif
@@ -154,7 +154,7 @@ void QuadratureEncoderCCL::AppendStatus(const StringRef& reply) noexcept
 int32_t QuadratureEncoderCCL::GetRelativePosition(bool& error) noexcept
 {
 	TCC3->CTRLBSET.reg = TCC_CTRLBSET_CMD_READSYNC;
-	while (TCC3->SYNCBUSY.reg & TCC_SYNCBUSY_COUNT) { }
+	while (TCC3->SYNCBUSY.reg & (TCC_SYNCBUSY_CTRLB | TCC_SYNCBUSY_COUNT)) { }
 
 	const uint16_t count = TCC3->COUNT.reg;
 
