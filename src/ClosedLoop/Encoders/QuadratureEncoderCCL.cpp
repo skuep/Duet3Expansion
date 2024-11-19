@@ -7,6 +7,41 @@
  *
  * This class realizes a quadrature decoder using CCL (configurable logic) and a TCC instance.
  * The basic idea follows DS00002434B: AN2434 Interfacing Quadrature Encoder using CCL with TCA and TCB from Microchip
+ * In this application note however is a bug, especially with the generation of the CNT signal for the counter. It is
+ * derived from the RS-FF (that samples on what signal the last edge occured). The shown implementation swallows one count
+ * pulse during direction reversal.
+ * This implementation is an adaptation that does not have this issue, because the count signal is generated from the sum
+ * (OR gate) of A-Pulse and B-Pulse.
+ * A': A-Pulse that is high for one CCL clock cycle when any edge on A signal occured (using EIC or EVSYS)
+ * B': B-Pulse that is high for one CCL clock cycle when any edge on B signal occured (using EIC or EVSYS)
+ * A: Asynchronous state of A signal
+ * B: Asynchronous state of B signal
+ * DIR: Direction signal for counter
+ * CNT: Count event signal for counter
+ *
+ *          LUT3
+ *          +---+
+ *  A-------+ X +----------------> DIR
+ *  B-------+ O |
+ *      +---+ R |
+ *      |   +---+
+ *      +----------------------------+ L
+ *          LUT0         SEQ0        | I
+ *          +---+        +------+    | N
+ *  A'--+---+ 1 +--------+ D  Q +----+ K
+ *      |   +---+        |      |
+ *      |            +---+ G    |
+ *      |   LUT1     |   +------+
+ *      |   +---+    |
+ *      +---+ O + ---+-----------> CNT
+ *          | R |
+ *      +---+   |
+ *      |   +---+
+ *      +------------+ L
+ *          LUT2     | I
+ *          +---+    | N
+ *  B'------+ 1 +----+ K
+ *          +---+
  */
 
 #include <RepRapFirmware.h>
@@ -54,8 +89,10 @@ GCodeResult QuadratureEncoderCCL::Init(const StringRef& reply) noexcept
 	while (EIC->SYNCBUSY.reg & EIC_SYNCBUSY_ENABLE) { }
 
 	/* Setup event system channels on the external interrupt pins */
-	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_0].reg = EVSYS_USER_CHANNEL(30+1); /* PULSE_A to LUT0 */
-	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_1].reg = EVSYS_USER_CHANNEL(31+1); /* PULSE_B to LUT1 */
+	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_0].reg = EVSYS_USER_CHANNEL(29+1); /* PULSE_A to LUT0 */
+	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_1].reg = EVSYS_USER_CHANNEL(30+1); /* PULSE_A to LUT1 */
+	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_2].reg = EVSYS_USER_CHANNEL(31+1); /* PULSE_B to LUT2 */
+	EVSYS->Channel[29].CHANNEL.reg =
 	EVSYS->Channel[30].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_7); /* PULSE_A */
 	EVSYS->Channel[31].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_10); /* PULSE_B */
 
@@ -78,15 +115,20 @@ GCodeResult QuadratureEncoderCCL::Init(const StringRef& reply) noexcept
 	CCL->LUTCTRL[2].bit.ENABLE = 0;
 	CCL->LUTCTRL[3].bit.ENABLE = 0;
 
-	/* LUT0/LUT1 as S-R Latch, PULSE_A connects to S, PULSE_B connects to R, CNT output is on LUT0 */
-	CCL->SEQCTRL[0].reg = CCL_SEQCTRL_SEQSEL_RS;
-	CCL->LUTCTRL[0].reg = CCL_LUTCTRL_TRUTH(0b10101010) | CCL_LUTCTRL_INSEL2_MASK | CCL_LUTCTRL_INSEL1_MASK | CCL_LUTCTRL_INSEL0_EVENT
-			| CCL_LUTCTRL_LUTEI | CCL_LUTCTRL_LUTEO | CCL_LUTCTRL_ENABLE;
-	CCL->LUTCTRL[1].reg = CCL_LUTCTRL_TRUTH(0b10101010) | CCL_LUTCTRL_INSEL2_MASK | CCL_LUTCTRL_INSEL1_MASK | CCL_LUTCTRL_INSEL0_EVENT
+	/* LUT0/LUT1 as gated D-FF, LUT2 as passthru
+	 * D(LUT0) = [A'(EVSYS)],
+	 * G(LUT1) = [A'(EVSYS) or [B'(EVSYS)](LINK)]
+	 * CNT = G
+	 *
+	 * LUT3 as DIR decoder using output from D-FF.
+	 * DIR = [A(IN9) xor B(IN10) xor D-FF(LINK)] */
+	CCL->SEQCTRL[0].reg = CCL_SEQCTRL_SEQSEL_DFF;
+	CCL->LUTCTRL[0].reg = CCL_LUTCTRL_TRUTH(0b00000010) | CCL_LUTCTRL_INSEL2_MASK | CCL_LUTCTRL_INSEL1_MASK | CCL_LUTCTRL_INSEL0_EVENT
 			| CCL_LUTCTRL_LUTEI | CCL_LUTCTRL_ENABLE;
-
-	/* LUT3 as DIR decoder.
-	 * DIR = A(IN9) xor B(IN10) xor CNT(LINK) */
+	CCL->LUTCTRL[1].reg = CCL_LUTCTRL_TRUTH(0b00001110) | CCL_LUTCTRL_INSEL2_MASK | CCL_LUTCTRL_INSEL1_LINK | CCL_LUTCTRL_INSEL0_EVENT
+			| CCL_LUTCTRL_LUTEI | CCL_LUTCTRL_LUTEO | CCL_LUTCTRL_ENABLE;
+	CCL->LUTCTRL[2].reg = CCL_LUTCTRL_TRUTH(0b00000010) | CCL_LUTCTRL_INSEL2_MASK | CCL_LUTCTRL_INSEL1_MASK | CCL_LUTCTRL_INSEL0_EVENT
+			| CCL_LUTCTRL_LUTEI | CCL_LUTCTRL_ENABLE;
 	CCL->LUTCTRL[3].reg = CCL_LUTCTRL_TRUTH(0b10010110) | CCL_LUTCTRL_INSEL2_LINK | CCL_LUTCTRL_INSEL1_IO | CCL_LUTCTRL_INSEL0_IO
 						| CCL_LUTCTRL_LUTEO | CCL_LUTCTRL_ENABLE;
 
@@ -98,7 +140,7 @@ GCodeResult QuadratureEncoderCCL::Init(const StringRef& reply) noexcept
     hri_gclk_write_PCHCTRL_reg(GCLK, EVSYS_GCLK_ID_1, GCLK_PCHCTRL_GEN(GclkNum60MHz) | GCLK_PCHCTRL_CHEN);
 	EVSYS->USER[EVSYS_ID_USER_TCC3_EV_0].reg = EVSYS_USER_CHANNEL(0+1);
 	EVSYS->USER[EVSYS_ID_USER_TCC3_EV_1].reg = EVSYS_USER_CHANNEL(1+1);
-	EVSYS->Channel[0].CHANNEL.reg = EVSYS_CHANNEL_PATH_RESYNCHRONIZED | EVSYS_CHANNEL_EDGSEL_BOTH_EDGES | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_CCL_LUTOUT_0); /* CNT */
+	EVSYS->Channel[0].CHANNEL.reg = EVSYS_CHANNEL_PATH_RESYNCHRONIZED | EVSYS_CHANNEL_EDGSEL_RISING_EDGE | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_CCL_LUTOUT_1); /* CNT */
 	EVSYS->Channel[1].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_CCL_LUTOUT_3); /* DIR  */
 
     /* Configure TCC3 as counter with two events serving as direction and count input */
