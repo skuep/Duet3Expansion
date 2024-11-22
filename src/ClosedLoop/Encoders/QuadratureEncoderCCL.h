@@ -1,5 +1,5 @@
 /*
- * PositionDecoder.h
+ * QuadratureEncoderCCL.h
  *
  *  Created on: 13 Nov 2024
  *      Author: Simon Kueppers

@@ -52,6 +52,10 @@
 # define SUPPORT_CLOSED_LOOP			0
 #endif
 
+#ifndef SUPPORT_CCL_ENCODER
+# define SUPPORT_CCL_ENCODER			0
+#endif
+
 #ifndef SUPPORT_PHASE_STEPPING
 # define SUPPORT_PHASE_STEPPING			0
 #endif

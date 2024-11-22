@@ -1,5 +1,5 @@
 /*
- * PositionDecoder.cpp
+ * QuadratureEncoderCCL.cpp
  *
  *  Created on: 13 Nov 2024
  *      Author: Simon Kueppers
@@ -21,14 +21,14 @@
  *
  *          LUT3
  *          +---+
- *  A-------+ X +----------------> DIR
- *  B-------+ O |
+ * A >------+ X +----------------> DIR
+ * B >------+ O |
  *      +---+ R |
  *      |   +---+
  *      +----------------------------+ L
  *          LUT0         SEQ0        | I
  *          +---+        +------+    | N
- *  A'--+---+ 1 +--------+ D  Q +----+ K
+ * A' >-+---+ 1 +--------+ D  Q +----+ K
  *      |   +---+        |      |
  *      |            +---+ G    |
  *      |   LUT1     |   +------+
@@ -40,7 +40,7 @@
  *      +------------+ L
  *          LUT2     | I
  *          +---+    | N
- *  B'------+ 1 +----+ K
+ * B' >-----+ 1 +----+ K
  *          +---+
  */
 
@@ -53,16 +53,15 @@
 #include <hri_eic_e54.h>
 #include <cmath>
 
+#if DIFFERENTIAL_STEPPER_OUTPUTS
+# error CCL_ENCODER and DIFFERENTIAL_STEPPER_OUTPUTS cannot be enabled simultaneously
+#endif
+
 // Overridden virtual functions
 
 // Initialise the encoder and enable it if successful. If there are any warnings or errors, put the corresponding message text in 'reply'.
 GCodeResult QuadratureEncoderCCL::Init(const StringRef& reply) noexcept
 {
-#if DIFFERENTIAL_STEPPER_OUTPUTS
-	reply.printf('Encoder not available due to DIFFERENTIAL_STEPPER_OUTPUTS');
-	return;
-#endif
-
 	/* Enable APB clocks and enable GCLKs on CCL and TCC and make them run synchronously */
 	MCLK->APBBMASK.reg |= MCLK_APBBMASK_EVSYS;
 	MCLK->APBCMASK.reg |= MCLK_APBCMASK_CCL | MCLK_APBCMASK_TCC3;
@@ -70,9 +69,7 @@ GCodeResult QuadratureEncoderCCL::Init(const StringRef& reply) noexcept
 	hri_gclk_write_PCHCTRL_reg(GCLK, TCC3_GCLK_ID, GCLK_PCHCTRL_GEN(GclkNum60MHz) | GCLK_PCHCTRL_CHEN);
 
 	/* Setup EIC to route A and B signals into the event system with both-edge event triggering */
-	constexpr Pin PositionDecoderEICPins[] = { PortAPin(7), PortBPin(10) };
-
-	for (Pin p : PositionDecoderEICPins)
+	for (Pin p : PositionDecoderEicPins)
 	{
 		/* Set pins to EIC function */
 		SetPinFunction(p, GpioPinFunction::A); /* EIC */
@@ -81,26 +78,27 @@ GCodeResult QuadratureEncoderCCL::Init(const StringRef& reply) noexcept
 	EIC->CTRLA.bit.ENABLE = 0;
 	while (EIC->SYNCBUSY.reg & EIC_SYNCBUSY_ENABLE) { }
 
-	EIC->CONFIG[0].bit.SENSE7 = EIC_CONFIG_SENSE7_BOTH_Val; /* EXTINT7 */
-	EIC->CONFIG[1].bit.SENSE2 = EIC_CONFIG_SENSE2_BOTH_Val; /* EXTINT10 */
-	EIC->EVCTRL.reg |= EIC_EVCTRL_EXTINTEO(1<<7) | EIC_EVCTRL_EXTINTEO(1<<10);
+	/* Configure sense configuration of EIC channels */
+	EIC->CONFIG[0].reg |=  (PositionDecoderEicChannels[0]  < 8) ? (EIC_CONFIG_SENSE0_BOTH_Val << (PositionDecoderEicChannels[0] * (EIC_CONFIG_SENSE1_Pos-EIC_CONFIG_SENSE0_Pos))) : 0
+						|  (PositionDecoderEicChannels[1]  < 8) ? (EIC_CONFIG_SENSE0_BOTH_Val << (PositionDecoderEicChannels[1] * (EIC_CONFIG_SENSE1_Pos-EIC_CONFIG_SENSE0_Pos))) : 0;
+	EIC->CONFIG[1].reg |=  (PositionDecoderEicChannels[0] >= 8) ? (EIC_CONFIG_SENSE0_BOTH_Val << ((PositionDecoderEicChannels[0] - 8) * (EIC_CONFIG_SENSE1_Pos-EIC_CONFIG_SENSE0_Pos))) : 0
+						|  (PositionDecoderEicChannels[1] >= 8) ? (EIC_CONFIG_SENSE0_BOTH_Val << ((PositionDecoderEicChannels[1] - 8) * (EIC_CONFIG_SENSE1_Pos-EIC_CONFIG_SENSE0_Pos))) : 0;
+	EIC->EVCTRL.reg |= EIC_EVCTRL_EXTINTEO(1<<PositionDecoderEicChannels[0]) | EIC_EVCTRL_EXTINTEO(1<<PositionDecoderEicChannels[1]);
 
 	EIC->CTRLA.bit.ENABLE = 1;
 	while (EIC->SYNCBUSY.reg & EIC_SYNCBUSY_ENABLE) { }
 
 	/* Setup event system channels on the external interrupt pins */
-	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_0].reg = EVSYS_USER_CHANNEL(29+1); /* PULSE_A to LUT0 */
-	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_1].reg = EVSYS_USER_CHANNEL(30+1); /* PULSE_A to LUT1 */
-	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_2].reg = EVSYS_USER_CHANNEL(31+1); /* PULSE_B to LUT2 */
-	EVSYS->Channel[29].CHANNEL.reg =
-	EVSYS->Channel[30].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_7); /* PULSE_A */
-	EVSYS->Channel[31].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_10); /* PULSE_B */
+	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_0].reg = EVSYS_USER_CHANNEL(PositionDecoderAsyncEventChannels[0]+1); /* PULSE_A to LUT0 */
+	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_1].reg = EVSYS_USER_CHANNEL(PositionDecoderAsyncEventChannels[1]+1); /* PULSE_A to LUT1 */
+	EVSYS->USER[EVSYS_ID_USER_CCL_LUTIN_2].reg = EVSYS_USER_CHANNEL(PositionDecoderAsyncEventChannels[2]+1); /* PULSE_B to LUT2 */
+	EVSYS->Channel[PositionDecoderAsyncEventChannels[0]].CHANNEL.reg =
+	EVSYS->Channel[PositionDecoderAsyncEventChannels[1]].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_0 + PositionDecoderEicChannels[0]); /* PULSE_A */
+	EVSYS->Channel[PositionDecoderAsyncEventChannels[2]].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_0 + PositionDecoderEicChannels[1]); /* PULSE_B */
 
 	/* Set up CCL LUTs.
 	 * For the CCL, A and B IOs are a second set of pins, different from EIC pins above, routed to the CCL peripheral. */
-	constexpr Pin PositionDecoderCCLPins[] = { PortBPin(14), PortBPin(15) };
-
-	for (Pin p : PositionDecoderCCLPins)
+	for (Pin p : PositionDecoderCclPins)
 	{
 		/* Set pins to CCL function */
 		SetPinFunction(p, GpioPinFunction::N); /* CCL */
@@ -138,10 +136,10 @@ GCodeResult QuadratureEncoderCCL::Init(const StringRef& reply) noexcept
 	/* Configure event system to feed CNT/DIR signals into TCC3 */
     hri_gclk_write_PCHCTRL_reg(GCLK, EVSYS_GCLK_ID_0, GCLK_PCHCTRL_GEN(GclkNum60MHz) | GCLK_PCHCTRL_CHEN);
     hri_gclk_write_PCHCTRL_reg(GCLK, EVSYS_GCLK_ID_1, GCLK_PCHCTRL_GEN(GclkNum60MHz) | GCLK_PCHCTRL_CHEN);
-	EVSYS->USER[EVSYS_ID_USER_TCC3_EV_0].reg = EVSYS_USER_CHANNEL(0+1);
-	EVSYS->USER[EVSYS_ID_USER_TCC3_EV_1].reg = EVSYS_USER_CHANNEL(1+1);
-	EVSYS->Channel[0].CHANNEL.reg = EVSYS_CHANNEL_PATH_RESYNCHRONIZED | EVSYS_CHANNEL_EDGSEL_RISING_EDGE | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_CCL_LUTOUT_1); /* CNT */
-	EVSYS->Channel[1].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_CCL_LUTOUT_3); /* DIR  */
+	EVSYS->USER[EVSYS_ID_USER_TCC3_EV_0].reg = EVSYS_USER_CHANNEL(PositionDecoderSyncEventChannels[0]+1);
+	EVSYS->USER[EVSYS_ID_USER_TCC3_EV_1].reg = EVSYS_USER_CHANNEL(PositionDecoderSyncEventChannels[1]+1);
+	EVSYS->Channel[PositionDecoderSyncEventChannels[0]].CHANNEL.reg = EVSYS_CHANNEL_PATH_RESYNCHRONIZED | EVSYS_CHANNEL_EDGSEL_RISING_EDGE | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_CCL_LUTOUT_1); /* CNT */
+	EVSYS->Channel[PositionDecoderSyncEventChannels[1]].CHANNEL.reg = EVSYS_CHANNEL_PATH_ASYNCHRONOUS | EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_CCL_LUTOUT_3); /* DIR  */
 
     /* Configure TCC3 as counter with two events serving as direction and count input */
 	TCC3->CTRLA.bit.ENABLE = 0;
@@ -228,8 +226,11 @@ void QuadratureEncoderCCL::SetPosition(int32_t position) noexcept
 
 	if (!stopped)
 	{
-		TCC3->CTRLA.bit.ENABLE = 0;
-		while (TCC3->SYNCBUSY.bit.ENABLE != 0) { }
+		/* "When a stop is detected while the counter is running, the counter will maintain its current
+		 * value." */
+		TCC3->CTRLBSET.reg = TCC_CTRLBSET_CMD_STOP;
+		while (TCC3->SYNCBUSY.reg & TCC_SYNCBUSY_CTRLB) { }
+		while (TCC3->CTRLBSET.bit.CMD != 0) { }
 	}
 
 	TCC3->COUNT.reg = lastCount = (uint16_t)position;
@@ -238,8 +239,11 @@ void QuadratureEncoderCCL::SetPosition(int32_t position) noexcept
 
 	if (!stopped)
 	{
-		TCC3->CTRLA.bit.ENABLE = 1;
-		while (TCC3->SYNCBUSY.bit.ENABLE != 0) { }
+		/* "If the re-trigger command is detected when the counter is stopped, the counter will
+		 * resume counting operation from the value in COUNT." */
+		TCC3->CTRLBSET.reg = TCC_CTRLBSET_CMD_RETRIGGER;
+		while (TCC3->SYNCBUSY.reg & TCC_SYNCBUSY_CTRLB) { }
+		while (TCC3->CTRLBSET.bit.CMD != 0) { }
 	}
 }
 

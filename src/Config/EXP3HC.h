@@ -85,6 +85,13 @@ constexpr GpioPinFunction TMC51xxMisoPinPeriphMode = GpioPinFunction::C;
 constexpr Pin PositionDecoderPins[] = { PortCPin(16), PortCPin(17), PortCPin(18) };
 constexpr GpioPinFunction PositionDecoderPinFunction = GpioPinFunction::G;
 
+// CCL Position decoder
+constexpr Pin PositionDecoderCclPins[] = { PortBPin(14), PortBPin(15) };	// CCL IO9 and IO10 Pins, where A and B signals are connected
+constexpr Pin PositionDecoderEicPins[] = { PortAPin(7), PortBPin(10) };		// External Interrupt pins, where A and B signals are connected
+constexpr uint32_t PositionDecoderEicChannels[] = { 7, 10 };				// External Interrupt Channels for A and B signals
+constexpr uint32_t PositionDecoderAsyncEventChannels[] = { 29, 30, 31 }; 	// Async Event channels we can use (needs 3)
+constexpr uint32_t PositionDecoderSyncEventChannels[] = { 0, 1 }; 			// Sync Event channels we can use (needs 2)
+
 PortGroup * const StepPio = &(PORT->Group[0]);		// the PIO that all the step pins are on
 constexpr Pin StepPins[NumDrivers] = { PortAPin(25), PortAPin(27), PortAPin(1) };
 constexpr Pin DirectionPins[NumDrivers] = { PortAPin(23), PortCPin(28), PortAPin(0) };
